@@ -118,7 +118,7 @@ with plot_panel:
                     hovertemplate=(
                         "x=%{x:.3f}<br>"
                         "density=%{y:.5f}<br>"
-                        "parameters=%{customdata}"
+                        "parameters: %{customdata}"
                         "<extra>%{fullData.name}</extra>"
                     ),
                 )
@@ -152,7 +152,7 @@ with plot_panel:
                                 hovertemplate=(
                                     "x=%{x:.3f}<br>"
                                     "weighted density=%{y:.5f}<br>"
-                                    "parameters=%{customdata}"
+                                    "parameters: %{customdata}"
                                     "<extra>%{fullData.name}</extra>"
                                 ),
                             )
