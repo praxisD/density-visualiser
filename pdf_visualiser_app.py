@@ -4,10 +4,25 @@ import streamlit as st
 
 from distributions import DISTRIBUTIONS, DistributionSpec
 
+MixtureComponent = tuple[int, str, DistributionSpec, float, dict[str, float]]
+
 
 def format_params(params: dict[str, float]) -> str:
     # Used in hover text so the legend can stay compact.
     return ", ".join(f"{name}={value:g}" for name, value in params.items())
+
+
+def format_mixture_components(
+    components: list[MixtureComponent],
+    total_weight: float,
+) -> str:
+    component_descriptions = []
+    for index, _distribution_id, spec, weight, params in components:
+        normalized_weight = weight / total_weight
+        component_descriptions.append(
+            f"{index}: {normalized_weight:.3g} x {spec.label}({format_params(params)})"
+        )
+    return "<br>".join(component_descriptions)
 
 
 st.set_page_config(
@@ -33,6 +48,22 @@ with st.sidebar:
     x_max = st.number_input("Maximum x", value=6.0, step=0.5)
     n_points = st.slider("Resolution", min_value=100, max_value=10000, value=1000, step=100)
 
+    st.header("Mixture")
+    show_mixture = st.checkbox("Show mixture distribution", value=False)
+    mixture_component_count = st.number_input(
+        "Components",
+        min_value=2,
+        max_value=8,
+        value=2,
+        step=1,
+        disabled=not show_mixture,
+    )
+    show_weighted_components = st.checkbox(
+        "Show weighted components",
+        value=False,
+        disabled=not show_mixture,
+    )
+
 plot_panel, parameter_panel = st.columns([3.5, 1.2], gap="large")
 
 with parameter_panel:
@@ -50,11 +81,44 @@ with parameter_panel:
     if not selected_distribution_ids:
         st.caption("Select distributions in the sidebar to edit their parameters here.")
 
+    mixture_components: list[MixtureComponent] = []
+    if show_mixture:
+        st.subheader("Mixture")
+        distribution_ids = list(DISTRIBUTIONS.keys())
+        default_component_ids = ["norm", "expon"]
+        for component_index in range(int(mixture_component_count)):
+            default_distribution_id = default_component_ids[
+                component_index % len(default_component_ids)
+            ]
+            default_distribution_position = distribution_ids.index(default_distribution_id)
+            with st.expander(f"Component {component_index + 1}", expanded=True):
+                distribution_id = st.selectbox(
+                    "Distribution",
+                    options=distribution_ids,
+                    index=default_distribution_position,
+                    format_func=lambda option: DISTRIBUTIONS[option].label,
+                    key=f"mixture_{component_index}_distribution",
+                )
+                weight = st.number_input(
+                    "Weight",
+                    min_value=0.0,
+                    value=1.0,
+                    step=0.1,
+                    key=f"mixture_{component_index}_weight",
+                )
+                spec = DISTRIBUTIONS[distribution_id]
+                params = spec.parameter_controls(
+                    f"mixture_{component_index}_{distribution_id}"
+                )
+            mixture_components.append(
+                (component_index + 1, distribution_id, spec, weight, params)
+            )
+
 with plot_panel:
     # Stop early for invalid or incomplete input rather than trying to plot.
     if x_min >= x_max:
         st.error("Minimum x must be less than maximum x.")
-    elif not selected_distributions:
+    elif not selected_distributions and not show_mixture:
         st.info("Select at least one probability density function in the sidebar.")
     else:
         # Build the shared x grid. Every selected PDF is evaluated on this same
@@ -82,6 +146,57 @@ with plot_panel:
                 )
             )
 
+        if show_mixture:
+            total_weight = sum(component[3] for component in mixture_components)
+            if total_weight <= 0:
+                st.warning("Mixture weights must sum to more than zero.")
+            else:
+                y_mixture = np.zeros_like(x)
+                mixture_text = format_mixture_components(mixture_components, total_weight)
+
+                for index, _distribution_id, spec, weight, params in mixture_components:
+                    normalized_weight = weight / total_weight
+                    component_density = normalized_weight * spec.pdf(x, params)
+                    y_mixture += component_density
+
+                    if show_weighted_components:
+                        fig.add_trace(
+                            go.Scatter(
+                                x=x,
+                                y=component_density,
+                                mode="lines",
+                                name=f"Component {index}",
+                                line=dict(dash="dot"),
+                                customdata=[
+                                    f"weight={normalized_weight:.5g}, {format_params(params)}"
+                                ]
+                                * len(x),
+                                hovertemplate=(
+                                    "x=%{x:.3f}<br>"
+                                    "weighted density=%{y:.5f}<br>"
+                                    "parameters=%{customdata}"
+                                    "<extra>%{fullData.name}</extra>"
+                                ),
+                            )
+                        )
+
+                fig.add_trace(
+                    go.Scatter(
+                        x=x,
+                        y=y_mixture,
+                        mode="lines",
+                        name="Mixture",
+                        line=dict(width=4),
+                        customdata=[mixture_text] * len(x),
+                        hovertemplate=(
+                            "x=%{x:.3f}<br>"
+                            "density=%{y:.5f}<br>"
+                            "%{customdata}"
+                            "<extra>%{fullData.name}</extra>"
+                        ),
+                    )
+                )
+
         # Layout settings apply to the whole figure, not to individual traces.
         fig.update_layout(
             xaxis_title="x",
@@ -98,7 +213,7 @@ with plot_panel:
             margin=dict(l=20, r=20, t=30, b=90),
         )
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     # This note documents where the distribution list comes from.
     with st.expander("Distribution source"):
