@@ -1,0 +1,25 @@
+# Virtual environments
+.venv/
+venv/
+env/
+.visenv/
+
+# Python cache/test artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Streamlit local files
+.streamlit/secrets.toml
+
+# OS/editor files
+.DS_Store
+.vscode/
+.idea/
+
+# Build/package artifacts
+build/
+dist/
+*.egg-info/
