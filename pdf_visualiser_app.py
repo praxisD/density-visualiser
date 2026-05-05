@@ -3,26 +3,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from distributions import DISTRIBUTIONS, DistributionSpec
-
-MixtureComponent = tuple[int, str, DistributionSpec, float, dict[str, float]]
-
-
-def format_params(params: dict[str, float]) -> str:
-    # Used in hover text so the legend can stay compact.
-    return ", ".join(f"{name}={value:g}" for name, value in params.items())
-
-
-def format_mixture_components(
-    components: list[MixtureComponent],
-    total_weight: float,
-) -> str:
-    component_descriptions = []
-    for index, _distribution_id, spec, weight, params in components:
-        normalized_weight = weight / total_weight
-        component_descriptions.append(
-            f"{index}: {normalized_weight:.3g} x {spec.label}({format_params(params)})"
-        )
-    return "<br>".join(component_descriptions)
+from formatting import MixtureComponent, format_mixture_components, format_params
 
 
 st.set_page_config(
@@ -52,9 +33,9 @@ with st.sidebar:
     show_mixture = st.checkbox("Show mixture distribution", value=False)
     mixture_component_count = st.number_input(
         "Components",
-        min_value=2,
+        min_value=1,
         max_value=8,
-        value=2,
+        value=1,
         step=1,
         disabled=not show_mixture,
     )
@@ -85,11 +66,8 @@ with parameter_panel:
     if show_mixture:
         st.subheader("Mixture")
         distribution_ids = list(DISTRIBUTIONS.keys())
-        default_component_ids = ["norm", "expon"]
         for component_index in range(int(mixture_component_count)):
-            default_distribution_id = default_component_ids[
-                component_index % len(default_component_ids)
-            ]
+            default_distribution_id = "norm"
             default_distribution_position = distribution_ids.index(default_distribution_id)
             with st.expander(f"Component {component_index + 1}", expanded=True):
                 distribution_id = st.selectbox(
