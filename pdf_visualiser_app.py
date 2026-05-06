@@ -3,7 +3,8 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from distributions import DISTRIBUTIONS, DistributionSpec
-from formatting import MixtureComponent, format_mixture_components, format_params
+from formatting import format_mixture_components, format_params
+from mixtures import MixtureComponent, calculate_mixture_density
 
 
 st.set_page_config(
@@ -129,24 +130,26 @@ with plot_panel:
             if total_weight <= 0:
                 st.warning("Mixture weights must sum to more than zero.")
             else:
-                y_mixture = np.zeros_like(x)
-                mixture_text = format_mixture_components(mixture_components, total_weight)
+                mixture = calculate_mixture_density(x, mixture_components)
+                mixture_text = format_mixture_components(
+                    mixture_components,
+                    mixture.total_weight,
+                )
 
-                for index, _distribution_id, spec, weight, params in mixture_components:
-                    normalized_weight = weight / total_weight
-                    component_density = normalized_weight * spec.pdf(x, params)
-                    y_mixture += component_density
-
+                for component in mixture.components:
                     if show_weighted_components:
                         fig.add_trace(
                             go.Scatter(
                                 x=x,
-                                y=component_density,
+                                y=component.density,
                                 mode="lines",
-                                name=f"Component {index}",
+                                name=f"Component {component.index}",
                                 line=dict(dash="dot"),
                                 customdata=[
-                                    f"weight={normalized_weight:.5g}, {format_params(params)}"
+                                    (
+                                        f"weight={component.normalized_weight:.5g}, "
+                                        f"{format_params(component.params)}"
+                                    )
                                 ]
                                 * len(x),
                                 hovertemplate=(
@@ -161,7 +164,7 @@ with plot_panel:
                 fig.add_trace(
                     go.Scatter(
                         x=x,
-                        y=y_mixture,
+                        y=mixture.density,
                         mode="lines",
                         name="Mixture",
                         line=dict(width=4),

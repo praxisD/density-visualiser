@@ -1,6 +1,4 @@
-from distributions import DistributionSpec
-
-MixtureComponent = tuple[int, str, DistributionSpec, float, dict[str, float]]
+from mixtures import MixtureComponent
 
 
 def format_params(params: dict[str, float]) -> str:
