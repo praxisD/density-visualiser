@@ -2,7 +2,7 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
-from distributions import DISTRIBUTIONS, DistributionSpec
+from distributions import DISTRIBUTIONS, DistributionSpec, scipy_distribution_info
 from formatting import format_mixture_components, format_params
 from mixtures import MixtureComponent, calculate_mixture_density
 
@@ -196,12 +196,61 @@ with plot_panel:
 
         st.plotly_chart(fig, width="stretch")
 
-    # This note documents where the distribution list comes from.
-    with st.expander("Distribution source"):
-        st.markdown(
-            """
-            The distribution list is generated from SciPy's continuous
-            distributions in `scipy.stats`. Each selected PDF gets controls for
-            its shape parameters plus `loc` and `scale`.
-            """
+st.divider()
+st.subheader("Distribution Information")
+show_distribution_info = st.checkbox(
+    "Show information about the distributions involved",
+    value=False,
+)
+
+if show_distribution_info:
+    info_controls = st.columns(2)
+    with info_controls[0]:
+        include_selected_info = st.checkbox(
+            "Selected PDFs",
+            value=True,
+            disabled=not selected_distributions,
         )
+    with info_controls[1]:
+        include_mixture_info = st.checkbox(
+            "Mixture components",
+            value=show_mixture,
+            disabled=not show_mixture,
+        )
+
+    info_entries: list[tuple[str, str, dict[str, float]]] = []
+    if include_selected_info:
+        for distribution_id, spec, params in selected_distributions:
+            info_entries.append((spec.label, distribution_id, params))
+    if include_mixture_info:
+        for index, distribution_id, spec, _weight, params in mixture_components:
+            info_entries.append((f"Component {index}: {spec.label}", distribution_id, params))
+
+    if not info_entries:
+        st.caption("Select at least one distribution or mixture component to show SciPy information.")
+
+    for title, distribution_id, params in info_entries:
+        info = scipy_distribution_info(distribution_id, params)
+        with st.expander(title, expanded=True):
+            st.markdown(f"**SciPy object:** `scipy.stats.{info.scipy_name}`")
+            st.write(info.description)
+            st.markdown(f"**Current parameters:** `{format_params(params)}`")
+            st.markdown(f"**Current support:** `{info.support}`")
+
+            if info.shape_parameters:
+                st.markdown("**Shape parameters**")
+                st.table(
+                    [
+                        {
+                            "Parameter": parameter.label,
+                            "SciPy name": parameter.name,
+                            "Domain": parameter.domain,
+                            "Type": "integer" if parameter.integral else "real",
+                        }
+                        for parameter in info.shape_parameters
+                    ]
+                )
+            else:
+                st.caption("This distribution has no shape parameters.")
+
+            st.markdown(f"[Open the SciPy reference]({info.reference_url})")

@@ -13,6 +13,7 @@ weighted mixture distribution.
 - Build mixture distributions with configurable component weights.
 - Optionally display weighted mixture components alongside the combined curve.
 - Inspect density values and parameters through Plotly hover labels.
+- Show SciPy reference information for selected PDFs and mixture components.
 
 ## Requirements
 

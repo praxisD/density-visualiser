@@ -20,6 +20,24 @@ class DistributionSpec:
 
 
 @dataclass(frozen=True)
+class ShapeParameterInfo:
+    name: str
+    label: str
+    domain: str
+    integral: bool
+
+
+@dataclass(frozen=True)
+class DistributionInfo:
+    scipy_name: str
+    label: str
+    description: str
+    shape_parameters: tuple[ShapeParameterInfo, ...]
+    support: str
+    reference_url: str
+
+
+@dataclass(frozen=True)
 class ScipyDistributionConfig:
     scipy_name: str
     shape_names: tuple[str, ...]
@@ -133,6 +151,84 @@ def display_parameter_name(parameter_name: str) -> str:
         "scale": "Scale",
     }
     return labels.get(parameter_name, parameter_name.replace("_", " ").title())
+
+
+def scipy_reference_url(scipy_name: str) -> str:
+    return (
+        "https://docs.scipy.org/doc/scipy/reference/generated/"
+        f"scipy.stats.{scipy_name}.html"
+    )
+
+
+def scipy_doc_summary(scipy_name: str) -> str:
+    doc = getattr(stats, scipy_name).__doc__ or ""
+    for line in doc.splitlines():
+        summary = line.strip()
+        if summary:
+            return summary
+    return f"A SciPy continuous random variable named {scipy_name}."
+
+
+def format_bound(value: float) -> str:
+    value = float(value)
+    if np.isneginf(value):
+        return "-inf"
+    if np.isposinf(value):
+        return "inf"
+    if np.isnan(value):
+        return "undefined"
+    return f"{value:g}"
+
+
+def format_shape_domain(
+    endpoints: tuple[float, float],
+    inclusive: tuple[bool, bool],
+) -> str:
+    left_bracket = "[" if inclusive[0] else "("
+    right_bracket = "]" if inclusive[1] else ")"
+    return (
+        f"{left_bracket}{format_bound(endpoints[0])}, "
+        f"{format_bound(endpoints[1])}{right_bracket}"
+    )
+
+
+def shape_parameter_info(scipy_name: str) -> tuple[ShapeParameterInfo, ...]:
+    distribution = getattr(stats, scipy_name)
+    return tuple(
+        ShapeParameterInfo(
+            name=info.name,
+            label=display_parameter_name(info.name),
+            domain=format_shape_domain(info.endpoints, info.inclusive),
+            integral=info.integrality,
+        )
+        for info in distribution._shape_info()
+    )
+
+
+def scipy_distribution_info(
+    scipy_name: str,
+    params: dict[str, float],
+) -> DistributionInfo:
+    distribution = getattr(stats, scipy_name)
+    shape_args = [params[name] for name in shape_names(scipy_name)]
+    try:
+        lower, upper = distribution.support(
+            *shape_args,
+            loc=params["loc"],
+            scale=params["scale"],
+        )
+        support = f"[{format_bound(lower)}, {format_bound(upper)}]"
+    except Exception:
+        support = "Unavailable for the current parameter values"
+
+    return DistributionInfo(
+        scipy_name=scipy_name,
+        label=display_label(scipy_name),
+        description=scipy_doc_summary(scipy_name),
+        shape_parameters=shape_parameter_info(scipy_name),
+        support=support,
+        reference_url=scipy_reference_url(scipy_name),
+    )
 
 
 def parameter_input(

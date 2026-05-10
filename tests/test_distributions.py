@@ -8,8 +8,14 @@ from distributions import (
     display_label,
     display_parameter_name,
     finite_bound,
+    format_bound,
+    format_shape_domain,
     make_pdf,
     shape_names,
+    shape_parameter_info,
+    scipy_distribution_info,
+    scipy_doc_summary,
+    scipy_reference_url,
 )
 
 
@@ -24,6 +30,29 @@ def test_display_label_falls_back_to_title_case():
 def test_display_parameter_name_uses_known_labels_and_fallback():
     assert display_parameter_name("dfn") == "Numerator degrees of freedom"
     assert display_parameter_name("shape_param") == "Shape Param"
+
+
+def test_scipy_reference_url_points_to_distribution_documentation():
+    assert scipy_reference_url("norm") == (
+        "https://docs.scipy.org/doc/scipy/reference/generated/"
+        "scipy.stats.norm.html"
+    )
+
+
+def test_scipy_doc_summary_reads_first_docstring_line():
+    assert scipy_doc_summary("norm") == "A normal continuous random variable."
+
+
+def test_format_bound_handles_finite_and_non_finite_values():
+    assert format_bound(-2.5) == "-2.5"
+    assert format_bound(float("-inf")) == "-inf"
+    assert format_bound(float("inf")) == "inf"
+    assert format_bound(float("nan")) == "undefined"
+
+
+def test_format_shape_domain_uses_endpoint_inclusivity():
+    assert format_shape_domain((0.0, float("inf")), (False, False)) == "(0, inf)"
+    assert format_shape_domain((0.0, 1.0), (True, True)) == "[0, 1]"
 
 
 def test_finite_bound_returns_none_for_non_finite_values():
@@ -43,6 +72,25 @@ def test_default_for_shape_uses_override_and_respects_bounds():
 def test_shape_names_reads_scipy_shape_metadata():
     assert shape_names("norm") == ()
     assert shape_names("beta") == ("a", "b")
+
+
+def test_shape_parameter_info_reads_scipy_shape_metadata():
+    beta_parameters = shape_parameter_info("beta")
+
+    assert [parameter.name for parameter in beta_parameters] == ["a", "b"]
+    assert [parameter.label for parameter in beta_parameters] == ["a", "b"]
+    assert [parameter.domain for parameter in beta_parameters] == ["(0, inf)", "(0, inf)"]
+    assert [parameter.integral for parameter in beta_parameters] == [False, False]
+
+
+def test_scipy_distribution_info_includes_current_support():
+    info = scipy_distribution_info("uniform", {"loc": 2.0, "scale": 3.0})
+
+    assert info.scipy_name == "uniform"
+    assert info.label == "Uniform (uniform)"
+    assert info.description == "A uniform continuous random variable."
+    assert info.shape_parameters == ()
+    assert info.support == "[2, 5]"
 
 
 def test_make_pdf_matches_scipy_distribution_pdf():
