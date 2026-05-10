@@ -1,8 +1,10 @@
 import numpy as np
+import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
 from distributions import DISTRIBUTIONS, DistributionSpec, scipy_distribution_info
+from empirical_data import load_uploaded_sample_data, numeric_sample_columns
 from formatting import format_mixture_components, format_params
 from mixtures import MixtureComponent, calculate_mixture_density
 
@@ -45,6 +47,61 @@ with st.sidebar:
         value=False,
         disabled=not show_mixture,
     )
+
+    st.header("Empirical data")
+    show_empirical_data = st.checkbox("Show uploaded data histogram", value=False)
+    uploaded_data_file = st.file_uploader(
+        "Upload 1D sample data",
+        type=["csv", "txt"],
+        disabled=not show_empirical_data,
+    )
+    histogram_bin_count = st.slider(
+        "Bins",
+        min_value=5,
+        max_value=200,
+        value=30,
+        step=5,
+        disabled=not show_empirical_data,
+    )
+    histogram_opacity = st.slider(
+        "Histogram opacity",
+        min_value=0.1,
+        max_value=1.0,
+        value=0.35,
+        step=0.05,
+        disabled=not show_empirical_data,
+    )
+
+    empirical_samples = np.array([], dtype=float)
+    empirical_label = "Empirical data"
+    if show_empirical_data and uploaded_data_file is not None:
+        try:
+            sample_data = load_uploaded_sample_data(uploaded_data_file)
+            numeric_columns = numeric_sample_columns(sample_data)
+            if not numeric_columns:
+                st.error(
+                    "The uploaded data must contain at least one column with "
+                    "finite numeric values."
+                )
+            else:
+                selected_sample_column = st.selectbox(
+                    "Value column",
+                    options=numeric_columns,
+                    format_func=str,
+                )
+                selected_values = pd.to_numeric(
+                    sample_data[selected_sample_column],
+                    errors="coerce",
+                ).dropna()
+                empirical_samples = selected_values.to_numpy(dtype=float)
+                empirical_samples = empirical_samples[np.isfinite(empirical_samples)]
+                empirical_label = f"Empirical data: {selected_sample_column}"
+                if empirical_samples.size == 0:
+                    st.error("The selected column does not contain finite numeric values.")
+                else:
+                    st.caption(f"{empirical_samples.size:,} finite samples loaded.")
+        except (UnicodeDecodeError, ValueError, pd.errors.ParserError) as error:
+            st.error(str(error))
 
 plot_panel, parameter_panel = st.columns([3.5, 1.2], gap="large")
 
@@ -97,7 +154,7 @@ with plot_panel:
     # Stop early for invalid or incomplete input rather than trying to plot.
     if x_min >= x_max:
         st.error("Minimum x must be less than maximum x.")
-    elif not selected_distributions and not show_mixture:
+    elif not selected_distributions and not show_mixture and empirical_samples.size == 0:
         st.info("Select at least one probability density function in the sidebar.")
     else:
         # Build the shared x grid. Every selected PDF is evaluated on this same
@@ -124,6 +181,45 @@ with plot_panel:
                     ),
                 )
             )
+
+        if empirical_samples.size > 0:
+            counts, edges = np.histogram(
+                empirical_samples,
+                bins=int(histogram_bin_count),
+                range=(x_min, x_max),
+            )
+            widths = np.diff(edges)
+            bin_centres = edges[:-1] + widths / 2
+            density = counts / (empirical_samples.size * widths)
+            outside_range_count = int(
+                np.count_nonzero(
+                    (empirical_samples < x_min) | (empirical_samples > x_max)
+                )
+            )
+
+            fig.add_trace(
+                go.Bar(
+                    x=bin_centres,
+                    y=density,
+                    width=widths,
+                    name=empirical_label,
+                    opacity=histogram_opacity,
+                    marker_line_width=0,
+                    customdata=np.column_stack([edges[:-1], edges[1:], counts]),
+                    hovertemplate=(
+                        "bin=[%{customdata[0]:.3f}, %{customdata[1]:.3f})<br>"
+                        "count=%{customdata[2]:.0f}<br>"
+                        "density=%{y:.5f}"
+                        "<extra>%{fullData.name}</extra>"
+                    ),
+                )
+            )
+
+            if outside_range_count > 0:
+                st.caption(
+                    f"{outside_range_count:,} of {empirical_samples.size:,} samples "
+                    "are outside the current plot range."
+                )
 
         if show_mixture:
             total_weight = sum(component[3] for component in mixture_components)
@@ -183,7 +279,8 @@ with plot_panel:
             xaxis_title="x",
             yaxis_title="Probability density",
             hovermode="x unified",
-            legend_title_text="PDF",
+            legend_title_text="Trace",
+            barmode="overlay",
             legend=dict(
                 orientation="h",
                 yanchor="top",
